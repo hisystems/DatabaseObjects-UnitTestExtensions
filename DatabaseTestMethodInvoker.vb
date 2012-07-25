@@ -1,5 +1,6 @@
 ﻿Imports Microsoft.VisualStudio.TestTools.UnitTesting
 Imports System.Configuration
+Imports System.Reflection
 
 Namespace DatabaseObjects.UnitTestExtensions
 
@@ -44,13 +45,14 @@ Namespace DatabaseObjects.UnitTestExtensions
                 Dim databaseTestInitializeMethod As System.Reflection.MethodInfo = _testClassInstance.GetType.GetSingleMethodWithCustomAttribute(Of DatabaseTestInitializeAttribute)()
                 Dim databaseTestCleanupMethod As System.Reflection.MethodInfo = _testClassInstance.GetType.GetSingleMethodWithCustomAttribute(Of DatabaseTestCleanupAttribute)()
                 Dim databaseConstructor = databaseObjectsDatabaseType.GetConstructor(New System.Type() {GetType(String), databaseObjectsConnectionType})
+                Dim databaseConstructorWithIDbConnection = databaseObjectsDatabaseType.GetConstructor(New System.Type() {GetType(System.Data.IDbConnection), databaseObjectsConnectionType})
 
                 For Each database In
                     _databaseTestClass.ConnectionStringNames _
                     .Select(Function(connectionStringName) System.Configuration.ConfigurationManager.ConnectionStrings(connectionStringName)) _
                     .Select(Function(connection) New With {
                         .Name = connection.Name,
-                        .Value = databaseConstructor.Invoke({connection.ConnectionString, System.Enum.Parse(databaseObjectsConnectionType, connection.ProviderName)})
+                        .Value = CreateDatabaseInstance(connection, databaseObjectsConnectionType, databaseConstructor, databaseConstructorWithIDbConnection)
                     })
 
                     Me._invokerContext.TestContext.WriteLine("_______________________________________")
@@ -87,6 +89,38 @@ Namespace DatabaseObjects.UnitTestExtensions
 
         End Function
 
+        ''' <summary>
+        ''' The connection string's provider name may be of the following formats:
+        ''' providerName="MySQL" or providerName="SqlLite;System.Data.SQLite.SQLiteConnection, System.Data.SQLite".
+        ''' In the first case the DatabaseObject.Database(string, ConnectionType) constructor should be called.
+        ''' In the second case the DatabaseObject.Database(IDbConnection, ConnectionType) constructor should be called
+        ''' using the type specified in the providerName which should be of type IDbConnection. 
+        ''' </summary>
+        Private Shared Function CreateDatabaseInstance(connectionString As ConnectionStringSettings, databaseObjectsConnectionType As Type, databaseConstructor As System.Reflection.ConstructorInfo, databaseConstructorWithIDbConnection As System.Reflection.ConstructorInfo) As Object
+
+            If System.Enum.IsDefined(databaseObjectsConnectionType, connectionString.ProviderName) Then
+                Return databaseConstructor.Invoke({connectionString.ConnectionString, System.Enum.Parse(databaseObjectsConnectionType, connectionString.ProviderName)})
+            Else
+                Dim connectionTypeAndProvider = connectionString.ProviderName.Split(";"c)
+                If connectionTypeAndProvider.Length <> 2 Then
+                    Throw New InvalidOperationException(connectionString.Name + ".ProviderName " + connectionString.ProviderName + " is invalid")
+                End If
+
+                Dim connectionType = System.Enum.Parse(databaseObjectsConnectionType, connectionTypeAndProvider(0))
+                Dim connectionObjectTypeAndAssembly = connectionTypeAndProvider(1).Replace(" ", String.Empty).Split(",")
+                Dim connectionObjectAssembly = Assembly.LoadFile(System.IO.Path.Combine(Assembly.GetExecutingAssembly().DirectoryLocation, connectionObjectTypeAndAssembly(1) + ".dll"))
+                Dim connectionObject = connectionObjectAssembly.GetType(connectionObjectTypeAndAssembly(0), throwOnError:=True)
+                Dim connectionObjectConstructor = connectionObject.GetConstructor({GetType(String)})
+                If connectionObjectConstructor Is Nothing Then
+                    Throw New InvalidOperationException("A public constructor with a single string argument could not be found for " & connectionObject.FullName)
+                End If
+
+                Dim connectionObjectInstance = connectionObjectConstructor.Invoke({connectionString.ConnectionString})  'Invokes the Constructor passing the connection string as an argument - it assumes this is the case.
+
+                Return databaseConstructorWithIDbConnection.Invoke({connectionObjectInstance, connectionType})
+            End If
+
+        End Function
 
     End Class
 
