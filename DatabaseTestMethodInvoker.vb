@@ -73,12 +73,8 @@ Namespace DatabaseObjects.UnitTestExtensions
                         End Try
                     End If
 
-                    Try
-                        result = Me._invokerContext.InnerInvoker.Invoke(database.Value)
-                    Catch ex As Exception
-                        result.Exception = New Exception("Test method " & Me._invokerContext.TestMethodInfo.FullName & " threw exception. " & ex.Message, ex)
-                        Exit For
-                    End Try
+                    result = Me._invokerContext.InnerInvoker.Invoke(database.Value)
+                    If result.Exception IsNot Nothing Then Exit For
 
                     If databaseTestCleanupMethod IsNot Nothing Then
                         Try
