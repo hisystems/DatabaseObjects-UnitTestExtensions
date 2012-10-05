@@ -19,6 +19,8 @@ Namespace DatabaseObjects.UnitTestExtensions
 
         Public Sub New()
 
+            ConnectionStringNames = New String() {}
+
         End Sub
 
         Public Overrides ReadOnly Property ExtensionId As System.Uri

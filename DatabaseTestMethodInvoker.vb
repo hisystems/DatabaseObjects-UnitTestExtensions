@@ -46,9 +46,15 @@ Namespace DatabaseObjects.UnitTestExtensions
                 Dim databaseTestCleanupMethod As System.Reflection.MethodInfo = _testClassInstance.GetType.GetSingleMethodWithCustomAttribute(Of DatabaseTestCleanupAttribute)()
                 Dim databaseConstructor = databaseObjectsDatabaseType.GetConstructor(New System.Type() {GetType(String), databaseObjectsConnectionType})
                 Dim databaseConstructorWithIDbConnection = databaseObjectsDatabaseType.GetConstructor(New System.Type() {GetType(System.Data.IDbConnection), databaseObjectsConnectionType})
+                'Get the connection string names again - because MS unit test framework will only utilise the first instance of DatabaseTestClassAttribute for some reason.
+                'So get the connection string names again from the test method's declaring type DatabaseTestClassAttribute.
+                Dim databaseTestClassAttribute = DirectCast(testMethod.DeclaringType.GetCustomAttributes(GetType(DatabaseTestClassAttribute), inherit:=False)(0), DatabaseTestClassAttribute)
+                If databaseTestClassAttribute.ConnectionStringNames.Length = 0 Then
+                    Throw New InvalidOperationException(testMethod.DeclaringType.FullName & " must define a set of connection string names")
+                End If
 
                 For Each database In
-                    _databaseTestClass.ConnectionStringNames _
+                    databaseTestClassAttribute.ConnectionStringNames _
                     .Select(Function(connectionStringName) System.Configuration.ConfigurationManager.ConnectionStrings(connectionStringName)) _
                     .Select(Function(connection) New With {
                         .Name = connection.Name,
